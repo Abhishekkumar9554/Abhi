@@ -1,54 +1,368 @@
-import { NextResponse } from "next/server";
-import { chatSchema } from "@/lib/validation";
-import { demoReply } from "@/lib/ai-providers";
+"use client";
 
-export const runtime = "nodejs";
+import { FormEvent, useEffect, useState } from "react";
+import AuthPanel from "@/components/AuthPanel";
+import { supabase, saveMessage, createConversation, getUserConversations, getConversationMessages } from "@/lib/supabase";
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const parsed = chatSchema.safeParse(body);
+type Message = { id: string; role: "user" | "ai"; text: string };
+type ModelOption = { id: string; name: string; provider: string; enabled: boolean };
+type Conversation = { id: string; title: string; created_at: string };
 
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid message." }, { status: 400 });
+const quickPrompts = [
+  "Explain space in simple Hindi",
+  "Help me build an app",
+  "Give me a business idea",
+  "Write a professional message",
+  "Plan my startup launch",
+  "Teach me a coding concept"
+];
+
+const tools = [
+  ["✦", "Chat", "AI conversations with smart, human-like replies"],
+  ["⌕", "Research", "Explore ideas, summary and fast decision support"],
+  ["</>", "Code", "Developer assistant for logic, automation and apps"],
+  ["◉", "Image", "Creative visual workflows and prompt design"],
+  ["▶", "Video", "Script and story planning for moving content"],
+  ["🎙", "Voice", "Voice-first assistant experience for everyday tasks"]
+];
+
+const navItems = ["Overview", "Agents", "Workspace", "Models", "Settings"];
+
+export default function Home() {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "welcome",
+      role: "ai",
+      text: "Namaste! 👋 Main AAVROX hoon. Demo mode mein aap mujhse kuch bhi pooch sakte hain."
     }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([
+    { id: "demo", name: "AAVROX Demo", provider: "demo", enabled: true }
+  ]);
+  const [selectedModel, setSelectedModel] = useState("demo");
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [user, setUser] = useState<any>(null);
+  const [useSupabase, setUseSupabase] = useState(false);
 
-    const message = parsed.data.message;
-    const model = parsed.data.model || process.env.AI_MODEL || "gpt-4o-mini";
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json({ text: demoReply(message), mode: "demo", model });
-    }
-
-    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: "You are AAVROX, a helpful, concise AI assistant. Answer in the user's language." },
-          { role: "user", content: message }
-        ],
-        temperature: 0.7,
-        max_tokens: 700
-      }),
-      cache: "no-store"
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (data.user) {
+        setUseSupabase(true);
+        loadConversations();
+      }
     });
 
-    if (!upstream.ok) {
-      return NextResponse.json({ text: "AI provider is temporarily unavailable." }, { status: 502 });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        setUseSupabase(true);
+        loadConversations();
+      } else {
+        setUseSupabase(false);
+      }
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !useSupabase) {
+      const saved = localStorage.getItem("aavrox-chat");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Message[];
+          if (Array.isArray(parsed) && parsed.length) setMessages(parsed);
+        } catch {
+          // ignore invalid saved chat
+        }
+      }
+    }
+  }, [useSupabase]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !useSupabase) {
+      localStorage.setItem("aavrox-chat", JSON.stringify(messages));
+    }
+  }, [messages, useSupabase]);
+
+  useEffect(() => {
+    fetch("/api/models")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.models) return;
+        const models = data.models.filter((m: ModelOption) => m.enabled);
+        setAvailableModels(models);
+        if (models.length && !models.some((m: ModelOption) => m.id === selectedModel)) {
+          setSelectedModel(models[0].id);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  async function loadConversations() {
+    if (!useSupabase) return;
+    const convos = await getUserConversations();
+    setConversations(convos);
+  }
+
+  async function newConversation() {
+    if (!useSupabase) return;
+    const convo = await createConversation("New chat");
+    if (convo) {
+      setCurrentConversationId(convo.id);
+      setMessages([
+        {
+          id: "welcome",
+          role: "ai",
+          text: "Namaste! 👋 Main AAVROX hoon. Demo mode mein aap mujhse kuch bhi pooch sakte hain."
+        }
+      ]);
+      await loadConversations();
+    }
+  }
+
+  async function loadConversation(convoId: string) {
+    if (!useSupabase) return;
+    setCurrentConversationId(convoId);
+    const msgs = await getConversationMessages(convoId);
+    setMessages(
+      msgs.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        text: m.content
+      }))
+    );
+  }
+
+  async function ensureConversation() {
+    if (!useSupabase) return null;
+    if (currentConversationId) return currentConversationId;
+
+    const title = input.trim().slice(0, 28) || "New chat";
+    const convo = await createConversation(title);
+    if (convo) {
+      setCurrentConversationId(convo.id);
+      await loadConversations();
+      return convo.id;
+    }
+    return null;
+  }
+
+  async function sendMessage(e?: FormEvent) {
+    e?.preventDefault();
+    const value = input.trim();
+    if (!value || loading) return;
+
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: value };
+    setMessages((m) => [...m, userMsg]);
+    setInput("");
+    setLoading(true);
+
+    let conversationId = currentConversationId;
+    if (useSupabase && !conversationId) {
+      conversationId = await ensureConversation();
     }
 
-    const data = await upstream.json();
-    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (useSupabase && conversationId) {
+      await saveMessage(conversationId, "user", value);
+    }
 
-    if (!text) return NextResponse.json({ error: "Empty AI response." }, { status: 502 });
-    return NextResponse.json({ text, mode: "provider", model });
-  } catch {
-    return NextResponse.json({ error: "Server error." }, { status: 500 });
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: value, model: selectedModel })
+      });
+      const data = await res.json();
+      const aiMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "ai",
+        text: data.text || data.error || "No response."
+      };
+      setMessages((m) => [...m, aiMsg]);
+
+      if (useSupabase && conversationId) {
+        await saveMessage(conversationId, "ai", aiMsg.text);
+      }
+    } catch {
+      const errMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "ai",
+        text: "Network error. Please try again."
+      };
+      setMessages((m) => [...m, errMsg]);
+    } finally {
+      setLoading(false);
+    }
   }
+
+  function quick(prompt: string) {
+    setInput(prompt);
+  }
+
+  return (
+    <main className="dashboard-shell">
+      <aside className="sidebar">
+        <div className="brand-block">
+          <div className="brand-mark">A</div>
+          <div>
+            <div className="brand-name">AAVROX</div>
+            <small>AI Universe</small>
+          </div>
+        </div>
+
+        <nav className="nav">
+          {navItems.map((item, index) => (
+            <button key={item} className={index === 2 ? "nav-item active" : "nav-item"}>
+              {item}
+            </button>
+          ))}
+        </nav>
+
+        {useSupabase && (
+          <div className="conversations-section">
+            <button className="new-chat-btn" onClick={newConversation}>
+              💭 New chat
+            </button>
+            <div className="conversations-list">
+              {conversations.slice(0, 5).map((convo) => (
+                <button
+                  key={convo.id}
+                  className={`conversation-item ${currentConversationId === convo.id ? "active" : ""}`}
+                  onClick={() => loadConversation(convo.id)}
+                >
+                  {convo.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mini-card">
+          <span>Workspace</span>
+          <strong>{useSupabase ? "Live" : "Demo"}</strong>
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="workspace-topbar">
+          <div>
+            <p className="eyebrow">welcome back</p>
+            <h2>AI Workspace</h2>
+          </div>
+
+          <div className="topbar-actions">
+            <label className="model-selector">
+              <span>Model</span>
+              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.id}>{model.name}</option>
+                ))}
+              </select>
+            </label>
+            <span className="status">{useSupabase ? "AUTHENTICATED" : "AI UNIVERSE"}</span>
+          </div>
+        </header>
+
+        <section className="hero-panel">
+          <div>
+            <div className="hero-badge">✦ BE BOLD • BE YOU</div>
+            <h1>AAVROX</h1>
+            <p>
+              One futuristic workspace for chat, research, coding, content creation,
+              and smart digital execution.
+            </p>
+            <div className="hero-actions">
+              <button className="primary" onClick={() => quick("Help me build an app")}>Start building</button>
+              <button className="secondary" onClick={() => quick("Give me a business idea")}>Explore ideas</button>
+            </div>
+          </div>
+        </section>
+
+        <section className="stats-grid">
+          <div className="stat-card">
+            <span>Live mode</span>
+            <strong>{useSupabase ? "Authenticated" : "Demo ready"}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Stack</span>
+            <strong>Next.js + Supabase</strong>
+          </div>
+          <div className="stat-card">
+            <span>Focus</span>
+            <strong>AI productivity</strong>
+          </div>
+        </section>
+
+        <section className="content-grid">
+          <div className="chat-panel">
+            <div className="panel-header">
+              <span>Workspace chat</span>
+              <button type="button" className="clear-chat" onClick={() => setMessages([{ id: "welcome", role: "ai", text: "Chat cleared. Ask me anything new." }])}>Clear</button>
+            </div>
+
+            <div className="messages">
+              {messages.map((m) => (
+                <div key={m.id} className={`bubble ${m.role}`}>
+                  <small>{m.role === "ai" ? "AAVROX" : "YOU"}</small>
+                  <div>{m.text}</div>
+                </div>
+              ))}
+              {loading && (
+                <div className="bubble ai">
+                  <small>AAVROX</small>
+                  <div>Thinking…</div>
+                </div>
+              )}
+            </div>
+
+            <form className="composer" onSubmit={sendMessage}>
+              <input
+                value={input}
+                maxLength={4000}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask AAVROX anything…"
+                aria-label="Message"
+              />
+              <button type="submit" disabled={loading || !input.trim()} aria-label="Send">
+                ➤
+              </button>
+            </form>
+          </div>
+
+          <div className="right-panel">
+            <div className="side-panel">
+              <h3>Quick start</h3>
+              <div className="quick-list">
+                {quickPrompts.map((p) => (
+                  <button key={p} onClick={() => quick(p)}>{p}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="side-panel tools-panel">
+              <h3>AAVROX Tools</h3>
+              <div className="tool-grid">
+                {tools.map(([icon, name, desc]) => (
+                  <article className="tool-card" key={name}>
+                    <span>{icon}</span>
+                    <div>
+                      <strong>{name}</strong>
+                      <small>{desc}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <AuthPanel />
+      </div>
+    </main>
+  );
 }
