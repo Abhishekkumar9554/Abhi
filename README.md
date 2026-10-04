@@ -1,46 +1,54 @@
-# AAVROX AI
+import { NextResponse } from "next/server";
+import { chatSchema } from "@/lib/validation";
+import { demoReply } from "@/lib/ai-providers";
 
-A premium AI workspace starter built with Next.js, TypeScript, Supabase, and a demo-mode AI layer.
+export const runtime = "nodejs";
 
-## Features
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const parsed = chatSchema.safeParse(body);
 
-- Futuristic dark UI
-- Chat interface with live demo replies
-- Optional OpenAI integration via server-side API key
-- Supabase-ready auth authentication setup
-- Security middleware and protected environment configuration
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid message." }, { status: 400 });
+    }
 
-## Run locally
+    const message = parsed.data.message;
+    const model = parsed.data.model || process.env.AI_MODEL || "gpt-4o-mini";
+    const apiKey = process.env.OPENAI_API_KEY;
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
-```
+    if (!apiKey) {
+      return NextResponse.json({ text: demoReply(message), mode: "demo", model });
+    }
 
-Then open:
+    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: "You are AAVROX, a helpful, concise AI assistant. Answer in the user's language." },
+          { role: "user", content: message }
+        ],
+        temperature: 0.7,
+        max_tokens: 700
+      }),
+      cache: "no-store"
+    });
 
-```text
-http://localhost:3000
-```
+    if (!upstream.ok) {
+      return NextResponse.json({ text: "AI provider is temporarily unavailable." }, { status: 502 });
+    }
 
-## Environment setup
+    const data = await upstream.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
 
-Create a `.env.local` file from `.env.example` and configure:
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `OPENAI_API_KEY` (optional)
-- `AI_MODEL` (optional)
-
-## Supabase setup
-
-1. Create a Supabase project.
-2. Add URL and anon key in `.env.local`.
-3. Run `supabase/schema.sql` inside the Supabase SQL Editor.
-4. Enable authentication as needed for your app flow.
-
-## Notes
-
-- If `OPENAI_API_KEY` is not present, the app automatically runs in safe demo mode.
-- Do not commit `.env.local` or any secret key.
+    if (!text) return NextResponse.json({ error: "Empty AI response." }, { status: 502 });
+    return NextResponse.json({ text, mode: "provider", model });
+  } catch {
+    return NextResponse.json({ error: "Server error." }, { status: 500 });
+  }
+}
