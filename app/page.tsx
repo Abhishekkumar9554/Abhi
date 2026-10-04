@@ -1,178 +1,90 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import AuthPanel from "@/components/AuthPanel";
+import { FormEvent, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
-type Message = { id: string; role: "user" | "ai"; text: string };
+export default function AuthPanel() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [message, setMessage] = useState("");
 
-const quickPrompts = [
-  "Explain space in simple Hindi",
-  "Help me build an app",
-  "Give me a business idea",
-  "Write a professional message",
-  "Plan my startup launch",
-  "Teach me a coding concept"
-];
+  const refreshUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    setUser(data.user);
+  };
 
-const tools = [
-  ["✦", "Chat", "AI conversations with smart, human-like replies"],
-  ["⌕", "Research", "Explore ideas, summary and fast decision support"],
-  ["</>", "Code", "Developer assistant for logic, automation and apps"],
-  ["◉", "Image", "Creative visual workflows and prompt design"],
-  ["▶", "Video", "Script and story planning for moving content"],
-  ["🎙", "Voice", "Voice-first assistant experience for everyday tasks"]
-];
+  useEffect(() => {
+    refreshUser();
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
-export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "ai",
-      text: "Namaste! 👋 Main AAVROX hoon. Demo mode mein aap mujhse kuch bhi pooch sakte hain."
-    }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+    return () => data.subscription.unsubscribe();
+  }, []);
 
-  async function sendMessage(e?: FormEvent) {
+  async function submit(e?: FormEvent) {
     e?.preventDefault();
-    const value = input.trim();
-    if (!value || loading) return;
+    setMessage("");
 
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: value }]);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: value })
-      });
-      const data = await res.json();
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          role: "ai",
-          text: data.text || data.error || "No response."
-        }
-      ]);
-    } catch {
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          role: "ai",
-          text: "Network error. Please try again."
-        }
-      ]);
-    } finally {
-      setLoading(false);
+    if (!email || password.length < 8) {
+      setMessage("Email दें और कम से कम 8 characters का password रखें.");
+      return;
     }
+
+    const result = mode === "login"
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password });
+
+    if (result.error) {
+      setMessage(result.error.message);
+      return;
+    }
+
+    setMessage(mode === "signup" ? "Account created. Email verification may be required." : "Login successful.");
+    setEmail("");
+    setPassword("");
+    await refreshUser();
   }
 
-  function quick(prompt: string) {
-    setInput(prompt);
+  async function logout() {
+    await supabase.auth.signOut();
+    setUser(null);
+  }
+
+  if (user) {
+    return (
+      <div className="authbar">
+        <span>Signed in as <b>{user.email}</b></span>
+        <button type="button" onClick={logout}>Logout</button>
+      </div>
+    );
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">A</span>
-          <b>AAVROX</b>
-        </div>
-        <span className="status">AI UNIVERSE</span>
-      </header>
-
-      <section className="hero">
-        <div className="hero-badge">✦ BE BOLD • BE YOU</div>
-        <h1>AAVROX</h1>
-        <p>
-          One futuristic workspace for chat, research, coding, content creation,
-          and smart digital execution.
-        </p>
-        <div className="hero-actions">
-          <button className="primary" onClick={() => quick("Help me build an app")}>Start building</button>
-          <button className="secondary" onClick={() => quick("Give me a business idea")}>Explore ideas</button>
-        </div>
-      </section>
-
-      <AuthPanel />
-
-      <section className="metrics">
-        <div className="metric-card">
-          <span className="metric-label">Live mode</span>
-          <strong>Demo ready</strong>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Stack</span>
-          <strong>Next.js + Supabase</strong>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Focus</span>
-          <strong>AI productivity</strong>
-        </div>
-      </section>
-
-      <section className="chat">
-        <div className="messages">
-          {messages.map((m) => (
-            <div key={m.id} className={`bubble ${m.role}`}>
-              <small>{m.role === "ai" ? "AAVROX" : "YOU"}</small>
-              <div>{m.text}</div>
-            </div>
-          ))}
-          {loading && (
-            <div className="bubble ai">
-              <small>AAVROX</small>
-              <div>Thinking…</div>
-            </div>
-          )}
-        </div>
-
-        <form className="composer" onSubmit={sendMessage}>
-          <input
-            value={input}
-            maxLength={4000}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask AAVROX anything…"
-            aria-label="Message"
-          />
-          <button type="submit" disabled={loading || !input.trim()} aria-label="Send">
-            ➤
-          </button>
-        </form>
-      </section>
-
-      <section className="section">
-        <div className="section-heading">
-          <h2>Quick Start</h2>
-        </div>
-        <div className="quick">
-          {quickPrompts.map((p) => (
-            <button key={p} onClick={() => quick(p)}>{p}</button>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-heading">
-          <h2>AAVROX Tools</h2>
-        </div>
-        <div className="grid">
-          {tools.map(([icon, name, desc]) => (
-            <article className="card" key={name}>
-              <span className="toolicon">{icon}</span>
-              <h3>{name}</h3>
-              <p>{desc}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <footer>AAVROX © 2026 · Prototype</footer>
-    </main>
+    <form className="authbar" onSubmit={submit}>
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+        type="email"
+      />
+      <input
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Password (8+)"
+        type="password"
+      />
+      <button type="submit">{mode === "login" ? "Login" : "Sign up"}</button>
+      <button
+        type="button"
+        className="ghost"
+        onClick={() => setMode((prev) => (prev === "login" ? "signup" : "login"))}
+      >
+        {mode === "login" ? "Create account" : "I have an account"}
+      </button>
+      {message && <span>{message}</span>}
+    </form>
   );
 }

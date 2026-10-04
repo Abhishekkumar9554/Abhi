@@ -24,6 +24,8 @@ const tools = [
   ["🎙", "Voice", "Voice-first assistant experience for everyday tasks"]
 ];
 
+const navItems = ["Overview", "Agents", "Workspace", "Models", "Settings"];
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -53,7 +55,7 @@ export default function Home() {
     }
 
     fetch("/api/models")
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.models) return;
         const models = data.models.filter((m: ModelOption) => m.enabled);
@@ -114,117 +116,145 @@ export default function Home() {
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">A</span>
-          <b>AAVROX</b>
+    <main className="dashboard-shell">
+      <aside className="sidebar">
+        <div className="brand-block">
+          <div className="brand-mark">A</div>
+          <div>
+            <div className="brand-name">AAVROX</div>
+            <small>AI Universe</small>
+          </div>
         </div>
-        <div className="topbar-right">
-          <label className="model-selector">
-            <span>Model</span>
-            <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
-              {availableModels.map((model) => (
-                <option key={model.id} value={model.id}>{model.name}</option>
+
+        <nav className="nav">
+          {navItems.map((item, index) => (
+            <button key={item} className={index === 2 ? "nav-item active" : "nav-item"}>
+              {item}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mini-card">
+          <span>Workspace</span>
+          <strong>Ready</strong>
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="workspace-topbar">
+          <div>
+            <p className="eyebrow">welcome back</p>
+            <h2>AI Workspace</h2>
+          </div>
+
+          <div className="topbar-actions">
+            <label className="model-selector">
+              <span>Model</span>
+              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.id}>{model.name}</option>
+                ))}
+              </select>
+            </label>
+            <span className="status">AI UNIVERSE</span>
+          </div>
+        </header>
+
+        <section className="hero-panel">
+          <div>
+            <div className="hero-badge">✦ BE BOLD • BE YOU</div>
+            <h1>AAVROX</h1>
+            <p>
+              One futuristic workspace for chat, research, coding, content creation,
+              and smart digital execution.
+            </p>
+            <div className="hero-actions">
+              <button className="primary" onClick={() => quick("Help me build an app")}>Start building</button>
+              <button className="secondary" onClick={() => quick("Give me a business idea")}>Explore ideas</button>
+            </div>
+          </div>
+        </section>
+
+        <section className="stats-grid">
+          <div className="stat-card">
+            <span>Live mode</span>
+            <strong>Demo ready</strong>
+          </div>
+          <div className="stat-card">
+            <span>Stack</span>
+            <strong>Next.js + Supabase</strong>
+          </div>
+          <div className="stat-card">
+            <span>Focus</span>
+            <strong>AI productivity</strong>
+          </div>
+        </section>
+
+        <section className="content-grid">
+          <div className="chat-panel">
+            <div className="panel-header">
+              <span>Workspace chat</span>
+              <button type="button" className="clear-chat" onClick={() => setMessages([{ id: "welcome", role: "ai", text: "Chat cleared. Ask me anything new." }])}>Clear</button>
+            </div>
+
+            <div className="messages">
+              {messages.map((m) => (
+                <div key={m.id} className={`bubble ${m.role}`}>
+                  <small>{m.role === "ai" ? "AAVROX" : "YOU"}</small>
+                  <div>{m.text}</div>
+                </div>
               ))}
-            </select>
-          </label>
-          <span className="status">AI UNIVERSE</span>
-        </div>
-      </header>
-
-      <section className="hero">
-        <div className="hero-badge">✦ BE BOLD • BE YOU</div>
-        <h1>AAVROX</h1>
-        <p>
-          One futuristic workspace for chat, research, coding, content creation,
-          and smart digital execution.
-        </p>
-        <div className="hero-actions">
-          <button className="primary" onClick={() => quick("Help me build an app")}>Start building</button>
-          <button className="secondary" onClick={() => quick("Give me a business idea")}>Explore ideas</button>
-        </div>
-      </section>
-
-      <AuthPanel />
-
-      <section className="metrics">
-        <div className="metric-card">
-          <span className="metric-label">Live mode</span>
-          <strong>Demo ready</strong>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Stack</span>
-          <strong>Next.js + Supabase</strong>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Focus</span>
-          <strong>AI productivity</strong>
-        </div>
-      </section>
-
-      <section className="chat">
-        <div className="chat-toolbar">
-          <span>Workspace chat</span>
-          <button type="button" className="clear-chat" onClick={() => setMessages([{ id: "welcome", role: "ai", text: "Chat cleared. Ask me anything new." }])}>Clear</button>
-        </div>
-
-        <div className="messages">
-          {messages.map((m) => (
-            <div key={m.id} className={`bubble ${m.role}`}>
-              <small>{m.role === "ai" ? "AAVROX" : "YOU"}</small>
-              <div>{m.text}</div>
+              {loading && (
+                <div className="bubble ai">
+                  <small>AAVROX</small>
+                  <div>Thinking…</div>
+                </div>
+              )}
             </div>
-          ))}
-          {loading && (
-            <div className="bubble ai">
-              <small>AAVROX</small>
-              <div>Thinking…</div>
+
+            <form className="composer" onSubmit={sendMessage}>
+              <input
+                value={input}
+                maxLength={4000}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask AAVROX anything…"
+                aria-label="Message"
+              />
+              <button type="submit" disabled={loading || !input.trim()} aria-label="Send">
+                ➤
+              </button>
+            </form>
+          </div>
+
+          <div className="right-panel">
+            <div className="side-panel">
+              <h3>Quick start</h3>
+              <div className="quick-list">
+                {quickPrompts.map((p) => (
+                  <button key={p} onClick={() => quick(p)}>{p}</button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
 
-        <form className="composer" onSubmit={sendMessage}>
-          <input
-            value={input}
-            maxLength={4000}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask AAVROX anything…"
-            aria-label="Message"
-          />
-          <button type="submit" disabled={loading || !input.trim()} aria-label="Send">
-            ➤
-          </button>
-        </form>
-      </section>
+            <div className="side-panel tools-panel">
+              <h3>AAVROX Tools</h3>
+              <div className="tool-grid">
+                {tools.map(([icon, name, desc]) => (
+                  <article className="tool-card" key={name}>
+                    <span>{icon}</span>
+                    <div>
+                      <strong>{name}</strong>
+                      <small>{desc}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section className="section">
-        <div className="section-heading">
-          <h2>Quick Start</h2>
-        </div>
-        <div className="quick">
-          {quickPrompts.map((p) => (
-            <button key={p} onClick={() => quick(p)}>{p}</button>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-heading">
-          <h2>AAVROX Tools</h2>
-        </div>
-        <div className="grid">
-          {tools.map(([icon, name, desc]) => (
-            <article className="card" key={name}>
-              <span className="toolicon">{icon}</span>
-              <h3>{name}</h3>
-              <p>{desc}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <footer>AAVROX © 2026 · Prototype</footer>
+        <AuthPanel />
+      </div>
     </main>
   );
 }
