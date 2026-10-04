@@ -1,6 +1,14 @@
 # AAVROX AI
 
-A beginner-friendly Next.js starter for the AAVROX AI workspace.
+A premium AI workspace starter built with Next.js, TypeScript, Supabase, and a demo-mode AI layer.
+
+## Features
+
+- Futuristic dark UI
+- Chat interface with live demo replies
+- Optional OpenAI integration via server-side API key
+- Supabase-ready auth authentication setup
+- Security middleware and protected environment configuration
 
 ## Run locally
 
@@ -10,22 +18,29 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000
+Then open:
 
-## Supabase
+```text
+http://localhost:3000
+```
+
+## Environment setup
+
+Create a `.env.local` file from `.env.example` and configure:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY` (optional)
+- `AI_MODEL` (optional)
+
+## Supabase setup
 
 1. Create a Supabase project.
-2. Put its URL and anon key in `.env.local`.
-3. Run `supabase/schema.sql` in Supabase SQL Editor.
-4. Authentication is handled through Supabase Auth.
+2. Add URL and anon key in `.env.local`.
+3. Run `supabase/schema.sql` inside the Supabase SQL Editor.
+4. Enable authentication as needed for your app flow.
 
-## AI
+## Notes
 
-Without `OPENAI_API_KEY`, the app runs in safe demo mode.
-If you add a valid server-side `OPENAI_API_KEY`, `/api/chat` can call the configured model.
-
-Do not commit `.env.local` or secret API keys to GitHub.
-
-## Production
-
-Use HTTPS, a trusted hosting provider, environment secrets, database RLS, rate limiting, logging/monitoring, backups, and provider-specific safety controls before public launch.
+- If `OPENAI_API_KEY` is not present, the app automatically runs in safe demo mode.
+- Do not commit `.env.local` or any secret key.
